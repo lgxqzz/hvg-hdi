@@ -1,0 +1,23 @@
+name: R workflow checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5.2'
+          use-public-rspm: true
+      - name: Install Ubuntu system dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libuv1-dev
+      - name: Install dependencies
+        run: Rscript examples/install_dependencies.R
+      - name: Unit and integration tests
+        run: Rscript tests/run_tests.R
+      - name: Synthetic demo
+        run: Rscript examples/run_demo.R

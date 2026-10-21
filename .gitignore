@@ -1,0 +1,7 @@
+Rplots.pdf
+.Rhistory
+.RData
+.DS_Store
+results/
+examples/data/
+examples/output/
