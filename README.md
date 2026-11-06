@@ -34,6 +34,24 @@ Rscript src/run_pipeline.R --counts RUN/inputs/counts.tsv \
   --input_scale raw_counts --profile tmm_v1 --experimental_bim true
 ```
 
+A successful command does not guarantee HDI-5: if any sample's fit is rejected,
+the entire cohort's `HDI_5` is `NA` (`unavailable_rejected_fit`). HDI-4 and all
+samples remain available. Inspect `HDI_5_status` and `BIM_status` in `HDI_df.tsv`.
+
+For a reproducible HDI-5 success example using the existing `separated3`
+synthetic generator with seed 92301 and the same raw-count/TMM CLI defaults:
+
+```sh
+Rscript examples/run_hdi5_demo.R results/hdi5
+```
+
+Each invocation creates a fresh `separated3_*` directory with `inputs/` and
+`results/`, preserving earlier runs and tracked figures. The script prints
+sample/HVG counts, finite-score counts and actual status frequencies; it exits
+with an error if any HDI-5 score is unavailable, retaining outputs for diagnosis.
+This synthetic example demonstrates software behavior; it does not guarantee
+successful fitting for other inputs.
+
 Use `Rscript src/run_pipeline.R --help` for options. Input tables require `gene_id` followed by numeric sample columns, plus metadata requiring unique `sample_id` values and a `cycle` label for each sample; cycle labels can repeat. Sample sets must match exactly; missing or invalid values fail explicitly.
 
 ## Method
