@@ -189,3 +189,68 @@ test_that("routine Quick Start repeats with fresh outputs and preserves tracked 
                    readLines(file.path(runs[2],"results/HDI_df.tsv")))
   expect_identical(tools::md5sum(assets),before)
 })
+
+test_that("HDI5 success demo uses the count CLI, repeats safely and reports actual statuses", {
+  td <- tempfile(); dir.create(td)
+  parent <- file.path(td,"outputs with spaces")
+  assets <- list.files(file.path(root,"figures"),full.names=TRUE)
+  figures_before <- tools::md5sum(assets)
+  run <- function(args) system2(file.path(R.home("bin"),"Rscript"),shQuote(args),stdout=TRUE,stderr=TRUE)
+  # Exercise script-relative module lookup outside the repository.
+  old <- getwd(); on.exit(setwd(old)); setwd(td)
+  args <- c(file.path(root,"examples/run_hdi5_demo.R"),parent)
+  first <- run(args); expect_null(attr(first,"status"))
+  runs <- list.dirs(parent,recursive=FALSE,full.names=TRUE)
+  expect_length(runs,1L)
+  original_files <- list.files(runs[1],recursive=TRUE,full.names=TRUE)
+  original_hashes <- tools::md5sum(original_files)
+  second <- run(args); expect_null(attr(second,"status"))
+  runs <- list.dirs(parent,recursive=FALSE,full.names=TRUE)
+  expect_length(runs,2L)
+  expect_identical(tools::md5sum(original_files),original_hashes)
+  expect_identical(tools::md5sum(assets),figures_before)
+  for (log in list(first,second)) {
+    expect_true(any(grepl("Samples: 48; HVGs: 192; finite HDI_4: 48/48; finite HDI_5: 48/48",log,fixed=TRUE)))
+    for (column in c("HDI_4_status","HDI_5_status","BIM_status")) {
+      expect_true(any(grepl(paste0(column,": ok=48"),log,fixed=TRUE)))
+    }
+  }
+  read_run <- function(i,file) read.delim(file.path(runs[i],"results",file))
+  h <- read_run(1,"HDI_df.tsv")
+  expect_equal(nrow(h),48L)
+  expect_equal(nrow(read_run(1,"HVG_genes.tsv")),192L)
+  expect_true(all(is.finite(h$HDI_4) & is.finite(h$HDI_5) & is.finite(h$BIM)))
+  expect_true(all(h$HDI_4_status=="ok" & h$HDI_5_status=="ok" & h$BIM_status=="ok"))
+  expect_identical(read_run(2,"HDI_df.tsv"),h)
+  expect_identical(read_run(2,"HVG_genes.tsv"),read_run(1,"HVG_genes.tsv"))
+  records <- read_run(1,"BIM_fit_records.tsv")
+  expect_equal(nrow(records),96L)
+  expect_equal(sum(records$accepted),48L)
+  expect_true(all(records$converged[records$accepted] & !records$boundary[records$accepted]))
+  expect_identical(records$sample_id[records$accepted],h$sample_id)
+  config <- dget(file.path(runs[1],"results/config.R"))
+  expect_identical(config$input_scale,"raw_counts")
+  expect_identical(config$profile,"tmm_v1")
+  expect_identical(config$experimental_bim,"true")
+  expect_equal(config$bim_max_steps,5000)
+  expect_equal(config$bim_tolerance,1e-7)
+  # Verify generated inputs against the existing generator, independently of the wrapper.
+  source(file.path(root,"examples/generate_mixture_scenario.R"),local=TRUE)
+  expected <- generate_mixture_scenario("separated3",92301)
+  expect_equal(dget(file.path(runs[1],"inputs/scenario.R")),expected$parameters)
+  counts <- read.delim(file.path(runs[1],"inputs/counts.tsv"),check.names=FALSE)
+  expect_equal(unname(as.matrix(counts[-1])),unname(expected$counts))
+  expect_identical(counts$gene_id,rownames(expected$counts))
+  expect_identical(names(counts)[-1],expected$metadata$sample_id)
+  expect_identical(h$sample_id,expected$metadata$sample_id)
+  # The optional demonstration must preserve the four-only CLI scores and cohort.
+  log <- run(c(file.path(root,"src/run_pipeline.R"),
+    "--counts",file.path(runs[1],"inputs/counts.tsv"),
+    "--meta",file.path(runs[1],"inputs/metadata.tsv"),
+    "--out_dir",file.path(td,"four_only"),"--input_scale","raw_counts","--profile","tmm_v1"))
+  expect_null(attr(log,"status"))
+  base <- read.delim(file.path(td,"four_only/HDI_df.tsv"))
+  expect_identical(h$sample_id,base$sample_id)
+  expect_identical(h$HDI_4,base$HDI_4)
+  expect_equal(h$HDI_5,(4*h$HDI_4+as.numeric(scale(h$BIM)))/5)
+})
